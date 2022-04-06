@@ -9,6 +9,7 @@
 # Main program file.
 ###
 ############################################################################################################
+
 import gc
 
 import logging
@@ -32,6 +33,10 @@ config = configparser.ConfigParser()
 config.read(config_path)
 
 LOGGER = logging.getLogger(__name__)
+
+
+
+
 ################################## ALGORITHM ##################################
 
 # Analyse a range of wells
@@ -74,6 +79,11 @@ def analyse(args, channels, loops, wells=None):
                 well_result['bpm']      = bpm
                 well_result['fps']      = fps
                 well_result['version']  = config['DEFAULT']['VERSION']
+                if len(qc_attributes['flags']) > 0:
+                    well_result['flags'] = qc_attributes['flags']
+                else:
+                    well_result['flags'] = 'NaN'
+                    
                 
                 # qc_attributes may help in dev to improve the algorithm, but are unwanted in production.
                 if args.debug:
@@ -201,6 +211,7 @@ def run_multifolder(args, dirs):
 
 
 def main(args):
+    
     ################################## STARTUP SETUP ##################################
     experiment_id, args = setup.process_arguments(args)
     setup.config_logger(args.outdir, ("logfile_" + experiment_id + ".log"), args.debug)

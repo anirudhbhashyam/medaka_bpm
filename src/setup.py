@@ -44,7 +44,7 @@ def parse_arguments():
         description='Automated heart rate analysis of Medaka embryo videos')
     # General analysis arguments
     parser.add_argument('-i', '--indir',     action="store",         dest='indir',
-                        help='Input directory',                                 default=False,      required=True)
+                        help='Input directory',                                 default='C:\\Users\\marci\\Documents\\correction_images',      required=False)
     parser.add_argument('-o', '--outdir',    action="store",         dest='outdir',
                         help='Output directory. Default=indir',                 default=False,      required=False)
     parser.add_argument('-w', '--wells',     action="store",         dest='wells',
