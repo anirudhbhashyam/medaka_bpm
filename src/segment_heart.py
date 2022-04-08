@@ -636,6 +636,63 @@ def HROI3(video, frame2frame_changes, timestamps, fps):
 
     return hroi_mask, all_roi, change_mask
 
+def HROI4(video, frame2frame_changes, timestamps, fps):
+    aft_frame2frame_changes = []
+    pixels_freq = []   
+    frame2frame_changes_filtering = assert_8bit(frame2frame_changes)
+    changes_video_filtering = normVideo(frame2frame_changes_filtering)
+    
+    for idx, dis_points in enumerate(changes_video_filtering):
+        contours_f, _ = cv2.findContours(dis_points, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        biggest_cnt = []
+        for cnt in contours_f:
+            area_cnt = cv2.contourArea(cnt)
+            biggest_cnt.append(area_cnt)
+          
+            max_value = max(biggest_cnt)
+            max_index = biggest_cnt.index(max_value)
+            zero_mask = np.zeros_like(dis_points)
+            zero_maks_3ch = cv2.cvtColor(zero_mask,cv2.COLOR_GRAY2RGB)           
+
+        area_cnt_final = cv2.contourArea(contours_f[max_index])
+        area_cnt_final = int(area_cnt_final/1000*255)   #Put the big numbers resulting from arrays sum into a reasonable number betwen 0 and 255
+        if area_cnt_final > 255:
+            area_cnt_final = 0
+                    
+        cv2.drawContours(zero_maks_3ch, [contours_f[max_index]], -1, (area_cnt_final, area_cnt_final, area_cnt_final), -1)        
+      
+        mask_count = cv2.cvtColor(zero_maks_3ch,cv2.COLOR_RGB2GRAY)
+        
+        mask_count[mask_count > 0] = 1       
+        pixels_freq.append(mask_count) 
+                
+        zero_maks_1ch = cv2.cvtColor(zero_maks_3ch,cv2.COLOR_RGB2GRAY)
+        aft_frame2frame_changes.append(zero_maks_1ch)    
+    
+    total_changes = np.sum(aft_frame2frame_changes, axis=0, dtype=np.uint32) # will be used to identify the ROI based on a formula of frequency and intensity of the pixel
+            
+    ### Create mask with most changing pixels
+    nr_of_pixels_considered = 250
+    top_changing_indices = np.unravel_index(np.argsort(total_changes.ravel())[-nr_of_pixels_considered:], total_changes.shape)
+    
+    top_changing_mask = np.zeros((total_changes.shape), dtype=bool)
+
+    # Label pixels based on the top changeable pixels
+    top_changing_mask[top_changing_indices] = 1
+
+    ### Threshold heart RoI to find regions
+    all_roi = total_changes > threshold_triangle(total_changes)
+    all_roi = all_roi.astype(np.uint8)  
+
+    # Fill holes in blobs
+    KERNEL = np.ones((9, 9), np.uint8)
+
+    all_roi = cv2.morphologyEx(all_roi, cv2.MORPH_CLOSE, KERNEL) 
+
+    hroi_mask = hroi_from_blobs(all_roi, top_changing_mask)   
+    
+    return hroi_mask, all_roi, total_changes, top_changing_mask   
+
 def draw_heart_qc_plot2(single_frame, abs_changes, all_roi, hroi_mask, out_dir):
 
     # Prepare outfigure
@@ -807,7 +864,7 @@ def run(video, args, video_metadata):
 
     try:
         #hroi_mask, all_roi, total_changes, top_changing_pixels = HROI2(frame2frame_changes_thresh)
-        hroi_mask, all_roi, total_changes = HROI3(normed_video, frame2frame_changes_thresh, timestamps, fps)
+        hroi_mask, all_roi, total_changes = HROI4(normed_video, frame2frame_changes_thresh, timestamps, fps)
 
     except ValueError as e: #TODO: create a cutom exception to avoid catching any system errors.
         LOGGER.info("Couldn't detect a suitable heart region")
