@@ -22,6 +22,7 @@ import seaborn as sns
 
 import sklearn
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import cross_validate
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV
 
@@ -93,15 +94,22 @@ def process_data(raw_data: pd.DataFrame, threshold: float) -> Tuple[pd.DataFrame
 
 def decision_tree(data: pd.DataFrame) -> Tuple[sklearn.tree.DecisionTreeClassifier, dict]:
     Y = data.pop(LABELS)
-    X_train, X_test, Y_train, Y_test = train_test_split(data, Y, test_size = TEST_SET_SIZE, random_state = 104729)
+    # X_train, X_test, Y_train, Y_test = train_test_split(data, Y, test_size = TEST_SET_SIZE, random_state = 104729)
     classifier = DecisionTreeClassifier(random_state = 224737, min_samples_split = 2)
-    classifier.fit(X_train, Y_train)
-    classifier_results = {"Train Size" : X_train.shape[0], 
-                          "Test Size": X_test.shape[0], 
-                          "Test Accuracy": classifier.score(X_test, Y_test) * 100}
     
-    classifier_results = {k: [v] for k, v in classifier_results.items()}
-    # print(f"Accuracy achieved on test set: {(classifier.score(X_test, Y_test) * 100):.2f}%")
+    # K-Fold cross validation.
+    folds = 6
+    cv_results = cross_validate(classifier, data, Y, cv = folds, scoring = "accuracy")
+
+    classifier_results = {
+        "K Folds": folds,
+        "Train Scores" : cv_results.get("train_score"), 
+        "Test Scores": cv_results.get("test_score"), 
+        "Mean Train Score": np.mean(cv_results.get("train_score")),
+        "Mean Test Score": np.mean(cv_results.get("test_score"))
+    }
+    
+    classifier_results = {k: [v] for k, v in classifier_results.items() if not isinstance(v, list)}
     return classifier, classifier_results
     
 def plot_decision_tree(tree: sklearn.tree.DecisionTreeClassifier,
