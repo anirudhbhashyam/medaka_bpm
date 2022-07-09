@@ -17,14 +17,13 @@ The results file needs to have the following QC parameters as features:
 
 	1. HROI Change Intensity
 	2. Harmonic Intensity
-	3. Heart size
-	4. Movement detection max
-	5. SNR
-	6. Signal intensity
-	7. Signal regional prominence
-	8. Intensity/Harmonic Intensity (top 5 %)
-	9. SNR Top 5%
-	10. Signal Intensity Top 5%
+	3. Movement detection max
+	4. SNR
+	5. Signal intensity
+	6. Signal regional prominence
+	7. Intensity/Harmonic Intensity (top 5 %)
+	8. SNR Top 5%
+	9. Signal Intensity Top 5%
 
 The output results directory (specified) will contain training metrics and qc parameter plots. The **decision tree evaluation** happens **automatically** via `medaka_bpm.analyse` if the tree has been trained as above.
 

@@ -1,2 +1,2 @@
-,Train Size,Test Size,Test Accuracy
-0,753,323,95.04643962848297
+,K Folds,Train Scores,Validation Scores,Mean Train Score,Mean Validation Score,Best Classifier Test Score
+0,6,[1. 1. 1. 1. 1. 1.],[0.97534247 0.97808219 0.94520548 0.95604396 0.97527473 0.98351648],1.0,0.968910883636911,0.9616087751371115

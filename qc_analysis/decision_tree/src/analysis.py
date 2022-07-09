@@ -27,11 +27,11 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV
 
 #################### -- GLOBALS -- ####################
-TEST_SET_SIZE = 0.3
+TEST_SET_SIZE = 0.2
 
-PLOT_SAVE_DIR = os.path.relpath("figs")
-DATA_SAVE_DIR = os.path.relpath("thresholds")
-TREE_SAVE_DIR = os.path.relpath("data")
+PLOT_SAVE_DIR = "figs"
+DATA_SAVE_DIR = "thresholds"
+TREE_SAVE_DIR = os.path.join(__file__, *(4 * [os.pardir]), "data")
 
 LABELS = "error"
 
@@ -74,14 +74,16 @@ def plot_qc_params(data: pd.DataFrame,
     plt.close()
 
 def convert_error_cat(actual: Iterable, desired: Iterable, threshold: float) -> list:
+    # 1 -> ERROR and 0 -> NO ERROR.
     return [1 if abs(a - d) >= threshold else 0 for a, d in zip(actual, desired)]
 
 def process_data(raw_data: pd.DataFrame, threshold: float) -> Tuple[pd.DataFrame, np.array]:
     # Columns to drop will also drop prexisting error columns.
-    data = raw_data[(QC_FEATURES + ["Heartrate (BPM)", "ground truth"])]
-    
     actual = "Heartrate (BPM)"
     desired = "ground truth"
+    
+    data = raw_data[QC_FEATURES + [actual, desired]].copy()
+    
     data[LABELS] = convert_error_cat(data[actual], data[desired], threshold)
     
     data = data.drop(columns = [actual, desired])
@@ -94,23 +96,41 @@ def process_data(raw_data: pd.DataFrame, threshold: float) -> Tuple[pd.DataFrame
 
 def decision_tree(data: pd.DataFrame) -> Tuple[sklearn.tree.DecisionTreeClassifier, dict]:
     Y = data.pop(LABELS)
-    # X_train, X_test, Y_train, Y_test = train_test_split(data, Y, test_size = TEST_SET_SIZE, random_state = 104729)
+
+    X_train, X_test, Y_train, Y_test = train_test_split(
+        data, 
+        Y, 
+        test_size = TEST_SET_SIZE, 
+        random_state = 104729,
+        shuffle = True
+    )
+
     classifier = DecisionTreeClassifier(random_state = 224737, min_samples_split = 2)
     
     # K-Fold cross validation.
     folds = 6
-    cv_results = cross_validate(classifier, data, Y, cv = folds, scoring = "accuracy")
+    cv_results = cross_validate(
+        estimator = classifier, 
+        X = X_train, 
+        y = Y_train, 
+        cv = folds, 
+        scoring = "accuracy",
+        return_train_score = True,
+        return_estimator = True
+    )
+
+    best_classifier = cv_results["estimator"][np.argmax(cv_results["test_score"])]
 
     classifier_results = {
         "K Folds": folds,
-        "Train Scores" : cv_results.get("train_score"), 
-        "Test Scores": cv_results.get("test_score"), 
-        "Mean Train Score": np.mean(cv_results.get("train_score")),
-        "Mean Test Score": np.mean(cv_results.get("test_score"))
+        "Train Scores": cv_results["train_score"], 
+        "Validation Scores": cv_results["test_score"], 
+        "Mean Train Score": np.mean(cv_results["train_score"]),
+        "Mean Validation Score": np.mean(cv_results["test_score"]),
+        "Best Classifier Test Score": best_classifier.score(X_test, Y_test)
     }
-    
-    classifier_results = {k: [v] for k, v in classifier_results.items() if not isinstance(v, list)}
-    return classifier, classifier_results
+
+    return best_classifier, {k: [v] for k, v in classifier_results.items() if not isinstance(v, list)}
     
 def plot_decision_tree(tree: sklearn.tree.DecisionTreeClassifier,
                        save_name: str,
@@ -134,10 +154,11 @@ def plot_decision_tree(tree: sklearn.tree.DecisionTreeClassifier,
 def get_thresholds(unscaled_data: pd.DataFrame,
                    train_data_features: Iterable, 
                    classifier: sklearn.tree.DecisionTreeClassifier) -> dict:
+
     n_nodes = classifier.tree_.node_count
     feature = classifier.tree_.feature
     threshold = classifier.tree_.threshold
-    limits = dict()
+    limits = {}
 
     for i in range(n_nodes):
         if feature[i] != -2:
@@ -172,14 +193,13 @@ def write_results(raw_data: pd.DataFrame,
     results_dir = os.path.join(out_dir, "-".join(["qc_analysis_results_training", raw_data["DATASET"][0]]))
     
     if os.path.exists(results_dir):
-         print("Results directory already exists. Overwriting.")
+        print("Results directory already exists. Overwriting.")
     
     os.makedirs(results_dir, exist_ok = True)
     
     plots_dir = os.path.join(results_dir, PLOT_SAVE_DIR)
     data_dir = os.path.join(results_dir, DATA_SAVE_DIR)
-    tree_dir = os.path.join(results_dir, TREE_SAVE_DIR)
-    # print(tree_dir)
+    tree_dir = os.path.abspath(TREE_SAVE_DIR)
     
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
@@ -190,15 +210,26 @@ def write_results(raw_data: pd.DataFrame,
     if not os.path.exists(tree_dir):
         os.makedirs(tree_dir)
         
-    plot_qc_params(data = raw_data, limits = limits, save_name = "qc_params_thresholds", figsize = (10, 40), out_dir = plots_dir)
-    plot_decision_tree(tree = classifier, feature_names =  data.columns, save_name = "decision_tree", out_dir = plots_dir)
+    plot_qc_params(
+        data = raw_data, 
+        limits = limits, 
+        save_name = "qc_params_thresholds", 
+        figsize = (10, 40), 
+        out_dir = plots_dir
+    )
+    plot_decision_tree(
+        tree = classifier, 
+        feature_names = data.columns, 
+        save_name = "decision_tree", 
+        out_dir = plots_dir
+    )
     
     threshold_data = process_limits(limits)
     threshold_data.to_csv(os.path.join(data_dir, "qc_thresholds.csv"))
     
     pd.DataFrame(classifier_results).to_csv(os.path.join(data_dir, "classifier_results.csv"))
     
-    # Write the tree to a sav file. This file needs to be accessed by medaka_bpm.
+    # Write the tree to a sav file. This file needs to be accessed from medaka_bpm.
     joblib.dump(classifier, os.path.join(tree_dir, "decision_tree.sav"))
 
 def evaluate(trained_tree: sklearn.tree.DecisionTreeClassifier, data: pd.DataFrame):
