@@ -83,8 +83,8 @@ def analyse_directory(args, channels, loops, wells=None):
                     well_result["qc_param_decision"] = qc_analysis_results[0]
 
                 # qc_attributes may help in dev to improve the algorithm, but are unwanted in production.
-                if args.debug:
-                    well_result.update(qc_attributes)
+                # if args.debug:
+                well_result.update(qc_attributes)
 
             except Exception as e:
                 LOGGER.exception("Couldn't acquier BPM for well " + str(video_metadata['well_id'])
@@ -101,6 +101,7 @@ def analyse_directory(args, channels, loops, wells=None):
                 well_result['fps']      = fps
                 well_result['version']  = config['DEFAULT']['VERSION']
                         
+                # 'append' is depreciated for newer version of pandas.
                 results = results.append(well_result, ignore_index=True)
 
                 gc.collect()

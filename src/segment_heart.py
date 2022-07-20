@@ -541,7 +541,6 @@ def save_image(image, name, outdir):
     plt.savefig(out_fig, bbox_inches='tight')
     plt.close()
 
-
 def draw_heart_qc_plot(single_frame, abs_changes, all_roi, hroi_mask, out_dir):
 
     # Prepare outfigure

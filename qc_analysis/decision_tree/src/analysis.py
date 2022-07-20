@@ -119,14 +119,18 @@ def decision_tree(data: pd.DataFrame) -> Tuple[sklearn.tree.DecisionTreeClassifi
         return_estimator = True
     )
 
-    best_classifier = cv_results["estimator"][np.argmax(cv_results["test_score"])]
+    # TODO: Best classifier should be chosen from scores based on (X_test, Y_test).
+    test_scores = [estimator.predict(X_test, Y_test) for estimator in cv_results["estimator"]]
+    best_classifier = cv_results["estimator"][np.argmax(test_scores)]
 
     classifier_results = {
         "K Folds": folds,
         "Train Scores": cv_results["train_score"], 
         "Validation Scores": cv_results["test_score"], 
+        "Test Scores": test_scores,
         "Mean Train Score": np.mean(cv_results["train_score"]),
         "Mean Validation Score": np.mean(cv_results["test_score"]),
+        "Mean Test Score": np.mean(test_scores),
         "Best Classifier Test Score": best_classifier.score(X_test, Y_test)
     }
 
