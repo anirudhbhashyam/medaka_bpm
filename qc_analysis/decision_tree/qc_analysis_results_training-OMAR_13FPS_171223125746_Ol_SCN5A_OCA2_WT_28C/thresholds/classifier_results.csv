@@ -1,2 +1,2 @@
-,K Folds,Train Scores,Validation Scores,Mean Train Score,Mean Validation Score,Best Classifier Test Score
-0,6,[1. 1. 1. 1. 1. 1.],[0.97534247 0.97808219 0.94520548 0.95604396 0.97527473 0.98351648],1.0,0.968910883636911,0.9616087751371115
+,K Folds,Train Scores,Validation Scores,Mean Train Score,Mean Validation Score,Mean Test Score,Best Classifier Test Score
+0,6,[1. 1. 1. 1. 1. 1.],[0.95426829 0.94512195 0.94512195 0.94495413 0.93577982 0.93272171],1.0,0.9429946421023844,0.9417344173441734,0.9512195121951219

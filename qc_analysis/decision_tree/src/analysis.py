@@ -105,7 +105,10 @@ def decision_tree(data: pd.DataFrame) -> Tuple[sklearn.tree.DecisionTreeClassifi
         shuffle = True
     )
 
-    classifier = DecisionTreeClassifier(random_state = 224737, min_samples_split = 2)
+    classifier = DecisionTreeClassifier(
+        random_state = 224737, 
+        min_samples_split = 2
+    )
     
     # K-Fold cross validation.
     folds = 6
@@ -119,8 +122,7 @@ def decision_tree(data: pd.DataFrame) -> Tuple[sklearn.tree.DecisionTreeClassifi
         return_estimator = True
     )
 
-    # TODO: Best classifier should be chosen from scores based on (X_test, Y_test).
-    test_scores = [estimator.predict(X_test, Y_test) for estimator in cv_results["estimator"]]
+    test_scores = [estimator.score(X_test, Y_test) for estimator in cv_results["estimator"]]
     best_classifier = cv_results["estimator"][np.argmax(test_scores)]
 
     classifier_results = {

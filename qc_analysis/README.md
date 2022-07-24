@@ -10,7 +10,7 @@ Training the decision tree saves the resulting model in
 ```
 $ git clone --recursive https://github.com/birneylab/medaka_bpm
 $ cd medaka_bpm/qc_analysis
-$ python medaka_qc_analysis.py -i <input_results_file_csv> -o <output_results_directory>
+$ python medaka_qc_analysis.py <input_results_file_csv> <output_results_directory> -et <error_threshold (bpm)>
 ```
 
 The results file needs to have the following QC parameters as features:
