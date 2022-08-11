@@ -11,6 +11,7 @@
 ###
 ############################################################################################################
 import os
+import time
 import joblib
 from typing import Iterable, Union, Tuple, List
 
@@ -22,12 +23,15 @@ import seaborn as sns
 
 import sklearn
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import cross_validate
+from sklearn.model_selection import cross_validate, StratifiedKFold
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV
 
+from imblearn.over_sampling import SMOTE
+
 #################### -- GLOBALS -- ####################
-TEST_SET_SIZE = 0.2
+TEST_SET_SIZE = 0.3
 
 PLOT_SAVE_DIR = "figs"
 DATA_SAVE_DIR = "thresholds"
@@ -38,13 +42,15 @@ LABELS = "error"
 QC_FEATURES = ["HROI Change Intensity", "Harmonic Intensity", "SNR", "Signal intensity", "Signal regional prominence", "Intensity/Harmonic Intensity (top 5 %)", "SNR Top 5%", "Signal Intensity Top 5%"]
 #################### -- GLOBALS -- ####################
 
-def plot_qc_params(data: pd.DataFrame,
-                   save_name: str, 
-                   out_dir: str,
-                   limits: Union[dict, None] = None,
-                   figsize: tuple = (10, 30), 
-                   save_q: bool = True) -> None:
-    
+def plot_qc_params(
+    data: pd.DataFrame,
+    save_name: str, 
+    out_dir: str,
+    limits: Union[dict, None] = None,
+    figsize: tuple = (10, 30), 
+    save_q: bool = True
+) -> None:
+
     fig, ax = plt.subplots(nrows = len(QC_FEATURES), 
                         figsize = figsize,
                         gridspec_kw = dict(left = 0.01, right = 0.9,
@@ -94,72 +100,127 @@ def process_data(raw_data: pd.DataFrame, threshold: float) -> Tuple[pd.DataFrame
     
     return data, scaler.scale_
 
-def decision_tree(data: pd.DataFrame) -> Tuple[sklearn.tree.DecisionTreeClassifier, dict]:
+def decision_tree(data: pd.DataFrame, out_dir: str) -> Tuple[sklearn.tree.DecisionTreeClassifier, dict]:
     Y = data.pop(LABELS)
+
+    oversample = SMOTE()
+    over_X, over_Y = oversample.fit_resample(data, Y)
+    over_X_train, over_X_test, over_Y_train, over_Y_test = train_test_split(over_X, over_Y, test_size=0.1, stratify = over_Y)
+
+    # clf = DecisionTreeClassifier()
+    clf = RandomForestClassifier(n_estimators = 150, random_state = 104729, class_weight = "balanced")
+    
+    # K-Fold cross validation (with stratification).
+    folds = 6
+    cv = StratifiedKFold(n_splits = folds, shuffle = True, random_state = 104729)
+
+    # clf = GridSearchCV(
+    #     estimator = clf, 
+    #     param_grid = {
+    #         "max_leaf_nodes": [2, 5, 10, 20],
+    #         "max_features": list(range(1, len(QC_FEATURES))),
+    #         "min_samples_leaf": list(range(1, 11)),
+    #     },
+    #     cv = cv,
+    #     scoring = "accuracy",
+    #     n_jobs = 4,
+    # )
+
+    scores = cross_validate(
+        estimator = clf,
+        X = over_X,
+        y = over_Y,
+        cv = cv,
+        scoring = ("accuracy", "f1", "recall", "precision"),
+        n_jobs = 4
+    )
 
     X_train, X_test, Y_train, Y_test = train_test_split(
         data, 
         Y, 
-        test_size = TEST_SET_SIZE, 
-        random_state = 104729,
-        shuffle = True
+        test_size = TEST_SET_SIZE,
+        stratify = Y, 
+        random_state = 104729
     )
 
-    classifier = DecisionTreeClassifier(
-        random_state = 224737, 
-        min_samples_split = 2
-    )
-    
-    # K-Fold cross validation.
-    folds = 6
-    cv_results = cross_validate(
-        estimator = classifier, 
-        X = X_train, 
-        y = Y_train, 
-        cv = folds, 
-        scoring = "accuracy",
-        return_train_score = True,
-        return_estimator = True
-    )
-
-    test_scores = [estimator.score(X_test, Y_test) for estimator in cv_results["estimator"]]
-    best_classifier = cv_results["estimator"][np.argmax(test_scores)]
+    clf.fit(over_X_train, over_Y_train)
 
     classifier_results = {
-        "K Folds": folds,
-        "Train Scores": cv_results["train_score"], 
-        "Validation Scores": cv_results["test_score"], 
-        "Test Scores": test_scores,
-        "Mean Train Score": np.mean(cv_results["train_score"]),
-        "Mean Validation Score": np.mean(cv_results["test_score"]),
-        "Mean Test Score": np.mean(test_scores),
-        "Best Classifier Test Score": best_classifier.score(X_test, Y_test)
+        "cv": cv.__class__.__name__,
+        "k folds": folds,
+        "CV accuracy": scores["test_accuracy"].mean(),
+        "CV f1": scores["test_f1"].mean(),
+        "CV recall": scores["test_recall"].mean(),
+        "CV precision": scores["test_precision"].mean(),
+        "Train Score": clf.score(X_train, Y_train),
+        "Test Score": clf.score(X_test, Y_test),
     }
 
-    return best_classifier, {k: [v] for k, v in classifier_results.items() if not isinstance(v, list)}
+    plot_confusion_matrix(
+        clf, 
+        X_test, 
+        Y_test, 
+        "cfm", 
+        out_dir
+    )
+
+    return clf, {k: [v] for k, v in classifier_results.items() if not isinstance(v, list)}
+
+def plot_confusion_matrix(
+    clf,
+    X_test: pd.DataFrame,
+    Y_test: pd.DataFrame,
+    save_name: str,
+    out_dir: str,
+    figsize: tuple = (10, 10),
+    save_q: bool = True
+) -> None:
+
+    fig, ax = plt.subplots(1, 1, figsize = figsize)
+    cfm = sklearn.metrics.confusion_matrix(Y_test, clf.predict(X_test).reshape(-1, 1))
+    sns.heatmap(
+        cfm, 
+        annot = True, 
+        fmt = "d", 
+        cmap = "Blues", 
+        ax = ax,
+        annot_kws = {"ha": "center", "va": "center"}
+    )
+
+    if save_q:
+        fig.savefig(
+            os.path.join(out_dir, f"{save_name}.png"), 
+            dpi = 80,
+            bbox_inches = "tight"
+        )
+
+    plt.close()
     
-def plot_decision_tree(tree: sklearn.tree.DecisionTreeClassifier,
-                       save_name: str,
-                       out_dir: str,
-                       feature_names: Iterable[str],
-                       class_names: Iterable[str] = ["no_error", "error"],
-                       figsize: tuple = (40, 30),
-                       save_q = True) -> None:
-    
+def plot_decision_tree(
+    tree: sklearn.tree.DecisionTreeClassifier,
+    save_name: str,
+    out_dir: str,
+    feature_names: Iterable[str],
+    class_names: Iterable[str] = ["no_error", "error"],
+    figsize: tuple = (40, 30),
+    save_q = True
+) -> None:
+
     fig = plt.figure(figsize = figsize)
     _ = sklearn.tree.plot_tree(tree,
                            feature_names = feature_names,
                            class_names = class_names,
                            fontsize = 14,
                            filled = True)
-    
     if save_q:
         fig.savefig(os.path.join(out_dir, ".".join(["decision_tree", "png"])), dpi = 80, bbox_inches = "tight")
         
     
-def get_thresholds(unscaled_data: pd.DataFrame,
-                   train_data_features: Iterable, 
-                   classifier: sklearn.tree.DecisionTreeClassifier) -> dict:
+def get_thresholds(
+    unscaled_data: pd.DataFrame,
+    train_data_features: Iterable, 
+    classifier: sklearn.tree.DecisionTreeClassifier
+) -> dict:
 
     n_nodes = classifier.tree_.node_count
     feature = classifier.tree_.feature
@@ -189,14 +250,16 @@ def process_limits(qc_thresholds: dict) -> pd.DataFrame:
     df["qc_max"] = df.max(axis = 1, skipna = True)
     return df 
 
-def write_results(raw_data: pd.DataFrame, 
-                  data: pd.DataFrame, 
-                  classifier: sklearn.tree.DecisionTreeClassifier, 
-                  classifier_results: dict, 
-                  limits: dict, 
-                  out_dir: str) -> None:
-    
-    results_dir = os.path.join(out_dir, "-".join(["qc_analysis_results_training", raw_data["DATASET"][0]]))
+def write_results(
+    raw_data: pd.DataFrame, 
+    data: pd.DataFrame, 
+    classifier: sklearn.tree.DecisionTreeClassifier, 
+    classifier_results: dict, 
+    #   limits: dict, 
+    out_dir: str
+) -> None:
+
+    results_dir = os.path.join(out_dir, "qc_analysis_results_training")
     
     if os.path.exists(results_dir):
         print("Results directory already exists. Overwriting.")
@@ -216,22 +279,23 @@ def write_results(raw_data: pd.DataFrame,
     if not os.path.exists(tree_dir):
         os.makedirs(tree_dir)
         
-    plot_qc_params(
-        data = raw_data, 
-        limits = limits, 
-        save_name = "qc_params_thresholds", 
-        figsize = (10, 40), 
-        out_dir = plots_dir
-    )
-    plot_decision_tree(
-        tree = classifier, 
-        feature_names = data.columns, 
-        save_name = "decision_tree", 
-        out_dir = plots_dir
-    )
+    # plot_qc_params(
+    #     data = raw_data, 
+    #     limits = limits, 
+    #     save_name = "qc_params_thresholds", 
+    #     figsize = (10, 40), 
+    #     out_dir = plots_dir
+    # )
+
+    # plot_decision_tree(
+    #     tree = classifier, 
+    #     feature_names = data.columns, 
+    #     save_name = "decision_tree", 
+    #     out_dir = plots_dir
+    # )
     
-    threshold_data = process_limits(limits)
-    threshold_data.to_csv(os.path.join(data_dir, "qc_thresholds.csv"))
+    # threshold_data = process_limits(limits)
+    # threshold_data.to_csv(os.path.join(data_dir, "qc_thresholds.csv"))
     
     pd.DataFrame(classifier_results).to_csv(os.path.join(data_dir, "classifier_results.csv"))
     
