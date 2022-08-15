@@ -7,7 +7,7 @@
 # License: Contact authors
 ###
 # Algorithms for:
-#   Decision tree evaluation by medaka_bpm.
+#   Classification evaluation by medaka_bpm to verify BPM correctness.
 ###
 ############################################################################################################
 import os
@@ -21,7 +21,9 @@ from sklearn.model_selection import StratifiedKFold
 
 import decision_tree.src.analysis as analyse
 
-from decision_tree.src.analysis_rewrite import DataHandler, RFClassifier, DTClassifier, IOHandler, Plot
+from decision_tree.src.analysis import DataHandler, RFClassifier, DTClassifier, IOHandler, Plot
+
+from imblearn.over_sampling import SMOTE
 
 def process_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -49,49 +51,42 @@ def process_args() -> argparse.Namespace:
     return parser.parse_args()
 
 def main() -> None:
-    args = process_args()
-    raw_data = analyse.pd.read_csv(args.input_file)
-    data, scale = analyse.process_data(raw_data, args.error_threshold)
-    classifier, classifier_results = analyse.decision_tree(data, args.out_dir)
-    # limits = analyse.get_thresholds(raw_data, analyse.QC_FEATURES, classifier)
-    # analyse.write_results(raw_data, data, classifier, classifier_results, limits, args.out_dir)
-    analyse.write_results(raw_data, data, classifier, classifier_results, args.out_dir)
-
-def main2() -> None:
+    config = Config()
+    config_data = next(config.load())
     args = process_args()
     data_handler = DataHandler(args.input_file)
     io_handler = IOHandler(args.out_dir)
-    data, scale = data_handler.process(args.error_threshold)
-    Y = data.pop(analyse.LABELS)
-    # clf = RFClassifier(
-    #     n_estimators = 150,
-    #     random_state = 104729,
-    #     folds = 10,
-    #     scoring = ("f1", "precision", "recall", "accuracy"),
-    #     n_jobs = 4,
-    #     clf = RandomForestClassifier,
-    #     cv = StratifiedKFold,
-    # )
-    clf = DTClassifier(
-        max_features = "sqrt",
-        random_state = 104729,  
-        folds = 6,
+    clf = RFClassifier(
+        n_estimators = 400,
+        random_state = 104729,
+        folds = 10,
         scoring = ("f1", "precision", "recall", "accuracy"),
         n_jobs = 4,
-        clf = DecisionTreeClassifier, 
+        clf = RandomForestClassifier,
         cv = StratifiedKFold,
+        sampling = SMOTE
     )
 
+    data, scale = data_handler.process(args.error_threshold)
+    Y = data.pop(analyse.LABELS)
+    # clf = DTClassifier(
+    #     max_features = "sqrt",
+    #     random_state = 104729,  
+    #     folds = 6,
+    #     scoring = ("f1", "precision", "recall", "accuracy"),
+    #     n_jobs = 4,
+    #     clf = DecisionTreeClassifier, 
+    #     cv = StratifiedKFold,
+    # )
     clf.fit(data, Y)
     plot_cfm = Plot(
         clf = clf, 
         figsize = (10, 10), 
         save_name = "cfm.png",
     )
-
     plot_cfm.confusion_matrix(data, Y)
     io_handler.write_figs(plot_cfm)
     io_handler.write_results(clf)
 
 if __name__ == "__main__":
-    main2()
+    main()
